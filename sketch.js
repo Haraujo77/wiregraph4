@@ -1362,6 +1362,11 @@ function copyDiagramAsSvg() {
     svgString = '<?xml version="1.0" standalone="no"?>\n' + svgString;
     // <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 
+    // Optimize SVG before copying
+    if (lineStyle === 'curved') {
+        svgString = optimizeSVG(svgString);
+    }
+
     // Use the Clipboard API
     navigator.clipboard.writeText(svgString).then(() => {
         console.log('SVG code copied to clipboard!');
@@ -1372,6 +1377,73 @@ function copyDiagramAsSvg() {
         console.error('Failed to copy SVG: ', err);
         alert("Error: Could not copy SVG to clipboard. Check browser permissions or console.");
     });
+}
+
+// Optimize SVG paths for smaller file size and better performance
+function optimizeSVG(svgString) {
+    // Create a temporary DOM element to manipulate the SVG
+    let tempDiv = document.createElement('div');
+    tempDiv.innerHTML = svgString;
+    let svg = tempDiv.querySelector('svg');
+    
+    if (!svg) return svgString;
+    
+    // Find all path elements
+    const paths = svg.querySelectorAll('path');
+    for (let path of paths) {
+        // Get path data
+        let d = path.getAttribute('d');
+        if (!d) continue;
+        
+        // Simplify curved paths
+        if (d.includes('C') || d.includes('c')) {
+            // Simple decimals rounding/truncation (reduces precision but makes paths smaller)
+            d = d.replace(/(\d+\.\d{3})\d*/g, (match, p1) => parseFloat(p1).toFixed(2));
+            
+            // Remove redundant control points (every third point for curves)
+            let segments = d.split(/([MCLZmclz])/);
+            let simplifiedD = '';
+            let pointCount = 0;
+            
+            for (let i = 0; i < segments.length; i++) {
+                if (segments[i] === 'C' || segments[i] === 'c') {
+                    // For curve commands, keep only a subset of points
+                    simplifiedD += segments[i];
+                    let points = segments[i+1].trim().split(/\s+|,/);
+                    
+                    // For long curves, simplify by keeping fewer points
+                    if (points.length > 12) { // More than 4 curve segments
+                        for (let j = 0; j < points.length; j += 3) {
+                            if (pointCount % 2 === 0 || j >= points.length - 6) { // Keep first, last, and every other point
+                                simplifiedD += points[j] + ',' + points[j+1] + ' ' + 
+                                             points[j+2] + ',' + points[j+3] + ' ' + 
+                                             points[j+4] + ',' + points[j+5] + ' ';
+                            }
+                            pointCount++;
+                        }
+                    } else {
+                        // For shorter curves, keep all points
+                        simplifiedD += segments[i+1];
+                    }
+                    i++; // Skip the next segment as we've processed it
+                } else {
+                    simplifiedD += segments[i];
+                }
+            }
+            
+            path.setAttribute('d', simplifiedD);
+        }
+    }
+    
+    // Remove unnecessary attributes
+    const allElements = svg.querySelectorAll('*');
+    for (let el of allElements) {
+        if (el.hasAttribute('style') && el.getAttribute('style') === '') {
+            el.removeAttribute('style');
+        }
+    }
+    
+    return tempDiv.innerHTML;
 }
 
 // << ADDED: Function to update grid mode
@@ -1543,8 +1615,9 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
             curveVertex(x0, y0);
             curveVertex(x0, y0);
             
-            // Middle points
-            for (let i = 1; i < numPoints - 1; i++) {
+            // Middle points - reduce number of points when dataset is large
+            const skipFactor = numPoints > 100 ? 2 : 1; // Skip every other point for large datasets
+            for (let i = 1; i < numPoints - 1; i += skipFactor) {
                 let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
                 let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
                 curveVertex(x, y);
@@ -1583,15 +1656,16 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
                 // Start at bottom-left
                 vertex(graphX, graphY + graphHeight);
                 
-                // Add the curve points
+                // Add the curve points - use fewer points for better performance
                 // First point
                 let x0 = map(0, 0, numPoints - 1, graphX, graphX + graphWidth);
                 let y0 = map(dataPoints[0], minY, maxY, graphY + graphHeight, graphY);
                 curveVertex(x0, y0);
                 curveVertex(x0, y0);
                 
-                // Middle points
-                for (let i = 1; i < numPoints - 1; i++) {
+                // Middle points - reduce number of points for area fills
+                const skipFactor = numPoints > 50 ? 3 : (numPoints > 20 ? 2 : 1); // More aggressive skipping for fills
+                for (let i = 1; i < numPoints - 1; i += skipFactor) {
                     let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
                     let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
                     curveVertex(x, y);
