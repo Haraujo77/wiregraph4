@@ -1362,10 +1362,8 @@ function copyDiagramAsSvg() {
     svgString = '<?xml version="1.0" standalone="no"?>\n' + svgString;
     // <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 
-    // Optimize SVG before copying
-    if (lineStyle === 'curved') {
-        svgString = optimizeSVG(svgString);
-    }
+    // Optimize SVG before copying - always optimize, not just for curved lines
+    svgString = optimizeSVG(svgString);
 
     // Use the Clipboard API
     navigator.clipboard.writeText(svgString).then(() => {
@@ -1381,6 +1379,7 @@ function copyDiagramAsSvg() {
 
 // Optimize SVG paths for smaller file size and better performance
 function optimizeSVG(svgString) {
+    console.time('SVG Optimization');
     // Create a temporary DOM element to manipulate the SVG
     let tempDiv = document.createElement('div');
     tempDiv.innerHTML = svgString;
@@ -1388,19 +1387,21 @@ function optimizeSVG(svgString) {
     
     if (!svg) return svgString;
     
-    // Find all path elements
+    // Simplify and clean up paths
     const paths = svg.querySelectorAll('path');
+    console.log(`Optimizing ${paths.length} SVG paths`);
+    
     for (let path of paths) {
         // Get path data
         let d = path.getAttribute('d');
         if (!d) continue;
         
-        // Simplify curved paths
+        // Round all decimal numbers to 2 places (applies to all paths)
+        d = d.replace(/(\d+\.\d{2})\d*/g, (match, p1) => parseFloat(p1).toFixed(2));
+        
+        // Specific optimization for curved paths
         if (d.includes('C') || d.includes('c')) {
-            // Simple decimals rounding/truncation (reduces precision but makes paths smaller)
-            d = d.replace(/(\d+\.\d{3})\d*/g, (match, p1) => parseFloat(p1).toFixed(2));
-            
-            // Remove redundant control points (every third point for curves)
+            // Remove redundant control points
             let segments = d.split(/([MCLZmclz])/);
             let simplifiedD = '';
             let pointCount = 0;
@@ -1435,15 +1436,109 @@ function optimizeSVG(svgString) {
         }
     }
     
-    // Remove unnecessary attributes
+    // Process all groups to remove redundant nesting
+    let processedGroups = 0;
+    const processGroups = (root = svg) => {
+        // Find all direct child groups
+        const groups = Array.from(root.children).filter(el => el.tagName.toLowerCase() === 'g');
+        
+        groups.forEach(group => {
+            // Process nested groups first (depth-first)
+            processGroups(group);
+            
+            // Check if this group is redundant (no attributes or only transform)
+            const attributes = group.attributes;
+            const hasOnlyTransform = attributes.length <= 1 && (attributes.length === 0 || group.hasAttribute('transform'));
+            const isEmpty = group.children.length === 0;
+            
+            if (isEmpty) {
+                // Remove empty groups
+                group.parentNode.removeChild(group);
+                processedGroups++;
+            } else if (hasOnlyTransform && group.children.length === 1) {
+                // Move the transform to the child if there's only one child
+                const child = group.children[0];
+                if (group.hasAttribute('transform')) {
+                    const groupTransform = group.getAttribute('transform');
+                    const childTransform = child.getAttribute('transform') || '';
+                    
+                    // Combine transforms
+                    if (childTransform) {
+                        child.setAttribute('transform', `${groupTransform} ${childTransform}`);
+                    } else {
+                        child.setAttribute('transform', groupTransform);
+                    }
+                }
+                
+                // Replace the group with its child
+                group.parentNode.replaceChild(child, group);
+                processedGroups++;
+            }
+        });
+    };
+    
+    // Start group optimization process
+    processGroups();
+    console.log(`Removed ${processedGroups} redundant groups`);
+    
+    // Remove unnecessary attributes and empty styles
     const allElements = svg.querySelectorAll('*');
+    let removedAttributes = 0;
+    
     for (let el of allElements) {
+        // Remove empty style attributes
         if (el.hasAttribute('style') && el.getAttribute('style') === '') {
             el.removeAttribute('style');
+            removedAttributes++;
         }
+        
+        // Remove data-* attributes that might be added by p5.js
+        for (let i = 0; i < el.attributes.length; i++) {
+            const attr = el.attributes[i];
+            if (attr.name.startsWith('data-')) {
+                el.removeAttribute(attr.name);
+                removedAttributes++;
+                i--; // Adjust index since we're removing items
+            }
+        }
+        
+        // Optimize color attributes - convert rgb() to hex where possible
+        ['fill', 'stroke'].forEach(colorAttr => {
+            if (el.hasAttribute(colorAttr)) {
+                const colorValue = el.getAttribute(colorAttr);
+                if (colorValue.startsWith('rgb(')) {
+                    try {
+                        // Parse RGB values
+                        const rgbValues = colorValue.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                        if (rgbValues) {
+                            const r = parseInt(rgbValues[1]);
+                            const g = parseInt(rgbValues[2]);
+                            const b = parseInt(rgbValues[3]);
+                            
+                            // Convert to hex
+                            const hexColor = '#' + 
+                                (r < 16 ? '0' : '') + r.toString(16) +
+                                (g < 16 ? '0' : '') + g.toString(16) +
+                                (b < 16 ? '0' : '') + b.toString(16);
+                            
+                            el.setAttribute(colorAttr, hexColor);
+                        }
+                    } catch (e) {
+                        // Skip if color parsing fails
+                    }
+                }
+            }
+        });
     }
     
-    return tempDiv.innerHTML;
+    console.log(`Removed ${removedAttributes} unnecessary attributes`);
+    console.timeEnd('SVG Optimization');
+    
+    // Final output
+    const result = tempDiv.innerHTML;
+    console.log(`Original size: ${svgString.length}, Optimized size: ${result.length}, Reduction: ${Math.round((svgString.length - result.length) / svgString.length * 100)}%`);
+    
+    return result;
 }
 
 // << ADDED: Function to update grid mode
