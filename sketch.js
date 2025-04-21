@@ -13,6 +13,7 @@ let graphHeight = 770;
 let verticalGridMode = 'weeks'; // << ADDED: weeks, months, none
 let isPanelCollapsed = false; // << ADDED: State for panel
 let chartType = 'line'; // << ENSURE THIS IS SET TO 'line'
+let lineStyle = 'straight'; // << ADDED: 'straight' or 'curved'
 let barWidthRatio = 0.8; // << ADDED: 0.1 to 1.0, proportion of available space
 let barDisplayStyle = 'overlay'; // << ADDED: 'overlay' or 'grouped'
 let barGroupGapRatio = 0.1; // << ADDED: 0.0 to 0.5, proportion of space between groups
@@ -528,6 +529,9 @@ function createGeneralControls() {
     toggleAreasButton.mousePressed(toggleAllAreaFills);
 }
 
+// Create View Controls function - updated to separate lineStyleDiv into a global variable
+let lineStyleDiv;
+
 function createViewControls() {
     let viewDetails = createElement('details')
         .parent(dynamicControlsContainer)
@@ -555,6 +559,14 @@ function createViewControls() {
     chartTypeRadios.option('mixed', 'Mixed (Portfolio Bar)');
     chartTypeRadios.selected(chartType); // Set from default
     chartTypeRadios.changed(updateChartType);
+    
+    // ADDED: Curved Lines Checkbox
+    createElement('h5', 'Line Options').parent(viewContent).style('margin-top', '15px');
+    let curvedCheckbox = createCheckbox('Use Curved Lines', lineStyle === 'curved').parent(viewContent);
+    curvedCheckbox.changed(() => {
+        lineStyle = curvedCheckbox.checked() ? 'curved' : 'straight';
+        redraw();
+    });
     
     // Vertical Grid Controls
     createElement('h5', 'Vertical Grid').parent(viewContent).style('margin-top', '15px');
@@ -1520,15 +1532,41 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
         noFill(); // Lines should not be filled
 
         // --- Draw the line stroke itself ---
-        beginShape();
-        for (let i = 0; i < numPoints; i++) {
-            // Map data index to X coordinate
-            let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
-            // Map normalized data value to Y coordinate
-            let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY); // Invert Y-axis for drawing
-            vertex(x, y);
+        
+        if (lineStyle === 'curved' && numPoints > 2) {
+            // For curved lines, use a sequence of curveVertex calls
+            beginShape();
+            
+            // First point needs to be duplicated for proper curve control
+            let x0 = map(0, 0, numPoints - 1, graphX, graphX + graphWidth);
+            let y0 = map(dataPoints[0], minY, maxY, graphY + graphHeight, graphY);
+            curveVertex(x0, y0);
+            curveVertex(x0, y0);
+            
+            // Middle points
+            for (let i = 1; i < numPoints - 1; i++) {
+                let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
+                let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
+                curveVertex(x, y);
+            }
+            
+            // Last point needs to be duplicated for proper curve control
+            let xLast = map(numPoints - 1, 0, numPoints - 1, graphX, graphX + graphWidth);
+            let yLast = map(dataPoints[numPoints - 1], minY, maxY, graphY + graphHeight, graphY);
+            curveVertex(xLast, yLast);
+            curveVertex(xLast, yLast);
+            
+            endShape();
+        } else {
+            // Standard straight lines with vertex
+            beginShape();
+            for (let i = 0; i < numPoints; i++) {
+                let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
+                let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
+                vertex(x, y);
+            }
+            endShape();
         }
-        endShape();
 
         // --- Draw the solid fill area below the line ---
         if (!disableAreaFill && line.showGradient && line.fillOpacity > 0) { // Added disableAreaFill check
@@ -1539,23 +1577,54 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
             fill(fillCol);
             noStroke(); // No border for the fill area
 
-            beginShape();
-            // Start vertex at bottom-left of the graph segment for this line
-            let startX = map(0, 0, numPoints - 1, graphX, graphX + graphWidth);
-            vertex(startX, graphY + graphHeight);
-
-            // Add vertices along the actual line path
-            for (let i = 0; i < numPoints; i++) {
-                let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
-                let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY); // Invert Y-axis
-                vertex(x, y);
+            if (lineStyle === 'curved' && numPoints > 2) {
+                beginShape();
+                
+                // Start at bottom-left
+                vertex(graphX, graphY + graphHeight);
+                
+                // Add the curve points
+                // First point
+                let x0 = map(0, 0, numPoints - 1, graphX, graphX + graphWidth);
+                let y0 = map(dataPoints[0], minY, maxY, graphY + graphHeight, graphY);
+                curveVertex(x0, y0);
+                curveVertex(x0, y0);
+                
+                // Middle points
+                for (let i = 1; i < numPoints - 1; i++) {
+                    let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
+                    let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
+                    curveVertex(x, y);
+                }
+                
+                // Last point
+                let xLast = map(numPoints - 1, 0, numPoints - 1, graphX, graphX + graphWidth);
+                let yLast = map(dataPoints[numPoints - 1], minY, maxY, graphY + graphHeight, graphY);
+                curveVertex(xLast, yLast);
+                curveVertex(xLast, yLast);
+                
+                // End at bottom-right
+                vertex(graphX + graphWidth, graphY + graphHeight);
+                
+                endShape(CLOSE);
+            } else {
+                beginShape();
+                
+                // Start vertex at bottom-left
+                vertex(graphX, graphY + graphHeight);
+                
+                // Add vertices along the line
+                for (let i = 0; i < numPoints; i++) {
+                    let x = map(i, 0, numPoints - 1, graphX, graphX + graphWidth);
+                    let y = map(dataPoints[i], minY, maxY, graphY + graphHeight, graphY);
+                    vertex(x, y);
+                }
+                
+                // End at bottom-right
+                vertex(graphX + graphWidth, graphY + graphHeight);
+                
+                endShape(CLOSE);
             }
-
-            // End vertex at bottom-right of the graph segment
-            let endX = map(numPoints - 1, 0, numPoints - 1, graphX, graphX + graphWidth);
-            vertex(endX, graphY + graphHeight);
-
-            endShape(CLOSE);
         }
 
         // Draw hover circle on this line if hovering
@@ -1569,7 +1638,7 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
 
         pop(); // Restore previous styles
     });
-} // End of drawLinesAndAreaFills
+}
 
 // --- Helper function for drawing Bar Chart ---
 function drawBars(graphX, graphY, graphWidth, graphHeight, minY, maxY, lineFilterFn) {
