@@ -316,7 +316,7 @@ function processData() {
         // Use the data that matches the current time period
         const portfolioCurrentData = timePeriodMode === '52_weeks' ? portfolioWeeklyData : portfolioFullYearData;
         
-        // Force white color and 2px width for portfolio
+        // Update: Force white color, 4px width, and 100% opacity for portfolio
         lineSettings.push({
             name: portfolioData.name || 'Portfolio',
             ticker: 'Portfolio',
@@ -324,8 +324,8 @@ function processData() {
             normalizedData: normalizeData(portfolioCurrentData),
             visible: true,
             color: '#fff', // White color
-            stroke: 2,     // 2px stroke width 
-            opacity: 255,  // Fully opaque
+            stroke: 4,     // Updated: 4px stroke width 
+            opacity: 255,  // Updated: 100% opaque
             fillOpacity: 25,
             showGradient: true
         });
@@ -335,7 +335,8 @@ function processData() {
 
 
     // --- Add Benchmarks ---
-    const defaultColors = ['#4682B4', '#3CB371', '#FFD700', '#DB7093', '#00CED1']; // SteelBlue, MediumSeaGreen, Gold, PaleVioletRed, DarkTurquoise
+    // Update: Use the specified colors
+    const defaultColors = ['#997aec', '#ff5a87', '#7ee863', '#007ff5', '#ff5000']; // New colors
     if (benchmarkData && Array.isArray(benchmarkData)) {
         benchmarkData.forEach((bm, index) => {
             if (bm) {
@@ -350,8 +351,8 @@ function processData() {
                         normalizedData: normalizeData(data),
                         visible: true,
                         color: defaultColors[index % defaultColors.length],
-                        stroke: 1,     // Force 1px stroke width for benchmarks
-                        opacity: 200,   // Slightly transparent
+                        stroke: 4,     // Updated: 4px stroke width for benchmarks
+                        opacity: 255,   // Updated: 100% opacity
                         fillOpacity: 20,
                         showGradient: true
                     });
