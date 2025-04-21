@@ -6,13 +6,13 @@ let portfolioData = {};
 let benchmarkData = [];
 
 // --- Control Variables ---
-let canvasWidth = 800;
-let canvasHeight = 600;
-let graphWidth = 700;
-let graphHeight = 500;
+let canvasWidth = 1920;
+let canvasHeight = 1080;
+let graphWidth = 1077;
+let graphHeight = 770;
 let verticalGridMode = 'weeks'; // << ADDED: weeks, months, none
 let isPanelCollapsed = false; // << ADDED: State for panel
-let chartType = 'line'; // << ADDED: 'line' or 'bar'
+let chartType = 'line'; // << ENSURE THIS IS SET TO 'line'
 let barWidthRatio = 0.8; // << ADDED: 0.1 to 1.0, proportion of available space
 let barDisplayStyle = 'overlay'; // << ADDED: 'overlay' or 'grouped'
 let barGroupGapRatio = 0.1; // << ADDED: 0.0 to 0.5, proportion of space between groups
@@ -188,33 +188,65 @@ function processIndicesData() {
 }
 
 function setup() {
-    console.log("Starting setup function with timePeriodMode:", timePeriodMode);
+    // Force our default options
+    console.log("Starting setup with explicit defaults");
     
+    // Initialize DOM elements first
     canvasContainerDiv = select('#canvas-container');
     controlsDiv = select('#controls');
     collapseButton = select('#collapse-btn');
     collapseButton.mousePressed(toggleControlPanel);
-    dynamicControlsContainer = select('#dynamic-controls-container'); // << ADDED: Select the new container
+    dynamicControlsContainer = select('#dynamic-controls-container');
 
-    // Dynamically determine initial canvas size based on container, but with defaults
-    let containerRect = canvasContainerDiv.elt.getBoundingClientRect();
-    canvasWidth = containerRect.width > 150 ? containerRect.width - 40 : 800; // Use default if container is too small initially
-    canvasHeight = containerRect.height > 150 ? containerRect.height - 40 : 600;
-
-    // Ensure graph isn't bigger than initial canvas
-    graphWidth = min(canvasWidth - 50, 700);
-    graphHeight = min(canvasHeight - 50, 500);
-
-    canvas = createCanvas(canvasWidth, canvasHeight, SVG); // Use SVG renderer
+    // Create canvas with our default size
+    canvas = createCanvas(canvasWidth, canvasHeight, SVG);
     canvas.parent('canvas-container');
 
+    // Process data
     processData();
-    createControls(); // Create controls after setting initial sizes
     
-    // Force an initial redraw after everything is set up
+    // Create the UI controls
+    createControls();
+    
+    // IMPORTANT: Set the defaults again AFTER creating controls
+    // This ensures radio buttons are properly selected
+    setDefaultOptions();
+    
+    // Redraw with our settings
     redraw();
+}
+
+// New function to set and verify default options
+function setDefaultOptions() {
+    console.log("Setting default options:");
     
-    console.log("Setup completed, time period:", timePeriodMode, "chart type:", chartType);
+    // Chart type must be 'line'
+    chartType = 'line';
+    console.log("- chartType forced to:", chartType);
+    
+    // Time period must be 'full_year'
+    timePeriodMode = 'full_year';
+    console.log("- timePeriodMode forced to:", timePeriodMode);
+    
+    // Ensure the radio buttons match our defaults
+    if (chartTypeRadios) {
+        console.log("- Setting chartTypeRadios selection");
+        chartTypeRadios.selected('line');
+    } else {
+        console.error("!! chartTypeRadios not initialized!");
+    }
+    
+    if (timePeriodRadios) {
+        console.log("- Setting timePeriodRadios selection");
+        timePeriodRadios.selected('full_year');
+    } else {
+        console.error("!! timePeriodRadios not initialized!");
+    }
+    
+    // Verify our settings took effect
+    console.log("Final values after setup:");
+    console.log("- chartType =", chartType);
+    console.log("- timePeriodMode =", timePeriodMode);
 }
 
 function processData() {
@@ -452,332 +484,537 @@ function normalizeData(dataArray) {
 
 
 function createControls() {
-    dynamicControlsContainer.html(''); // Clear previous controls from the dynamic container
+    dynamicControlsContainer.html(''); // Clear previous controls
+    
+    // --- Create General Controls block ---
+    createGeneralControls();
+    
+    // --- Create View Options block ---
+    createViewControls();
+    
+    // --- Create Layout Controls block ---
+    createLayoutControls();
+    
+    // --- Create Bar Settings (conditionally visible) ---
+    createBarControls();
+    
+    // --- Create Line Settings blocks ---
+    createLineControls();
+    
+    redraw(); // Initial draw after creating controls
+    updateChartType(); // Call to set control visibility
+}
 
-    // --- General Controls ---
-    let generalGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group');
-    createElement('h4', 'General').parent(generalGroup);
-    saveSvgButton = createButton('Save as SVG').parent(generalGroup);
+// Split control creation into separate functions
+function createGeneralControls() {
+    let generalDetails = createElement('details')
+        .parent(dynamicControlsContainer)
+        .attribute('open', ''); // Open by default
+    
+    createElement('summary', 'General Controls').parent(generalDetails);
+    
+    let generalContent = createDiv().parent(generalDetails).class('control-content');
+    
+    // Buttons for SVG operations
+    let buttonGroup = createDiv().parent(generalContent).class('control-group');
+    saveSvgButton = createButton('Save as SVG').parent(buttonGroup);
     saveSvgButton.mousePressed(saveDiagramAsSvg);
-    saveSvgButton.style('margin-top', '5px'); // Adjust spacing
-    saveSvgButton.style('margin-right', '5px'); // Add spacing between buttons
+    
+    copySvgButton = createButton('Copy SVG Code').parent(buttonGroup);
+    copySvgButton.mousePressed(copyDiagramAsSvg);
+    
+    toggleAreasButton = createButton('Toggle All Areas').parent(buttonGroup);
+    toggleAreasButton.mousePressed(toggleAllAreaFills);
+}
 
-    copySvgButton = createButton('Copy SVG Code').parent(generalGroup); // << ADDED
-    copySvgButton.mousePressed(copyDiagramAsSvg); // << ADDED
-    copySvgButton.style('margin-top', '5px'); // << ADDED
-    copySvgButton.style('margin-right', '5px'); // Add spacing
-
-    toggleAreasButton = createButton('Toggle All Areas').parent(generalGroup); // << ADDED
-    toggleAreasButton.mousePressed(toggleAllAreaFills); // << ADDED
-    toggleAreasButton.style('margin-top', '5px'); // << ADDED
-
-    // --- Time Period Selection ---
-    createElement('h5', 'Time Period').parent(generalGroup).style('margin-top', '15px').style('margin-bottom', '5px');
-    timePeriodRadios = createRadio().parent(generalGroup);
+function createViewControls() {
+    let viewDetails = createElement('details')
+        .parent(dynamicControlsContainer)
+        .attribute('open', ''); // Open by default
+    
+    createElement('summary', 'View Options').parent(viewDetails);
+    
+    let viewContent = createDiv().parent(viewDetails).class('control-content');
+    
+    // Time Period Selection
+    createElement('h5', 'Time Period').parent(viewContent);
+    let timePeriodDiv = createDiv().parent(viewContent).class('radio-group');
+    timePeriodRadios = createRadio('timePeriodRadios').parent(timePeriodDiv); // Add unique name
     timePeriodRadios.option('52_weeks', '52 Weeks');
     timePeriodRadios.option('full_year', 'Full Year');
-    timePeriodRadios.selected(timePeriodMode); // Ensure this properly selects the default option
+    timePeriodRadios.selected(timePeriodMode); // Set from default
     timePeriodRadios.changed(updateTimePeriod);
-    timePeriodRadios.style('margin-bottom', '10px');
-
-    // --- Chart Type Selection ---
-    createElement('h5', 'Chart Type').parent(generalGroup).style('margin-top', '15px').style('margin-bottom', '5px');
-    chartTypeRadios = createRadio().parent(generalGroup);
+    
+    // Chart Type Selection
+    createElement('h5', 'Chart Type').parent(viewContent).style('margin-top', '15px');
+    let chartTypeDiv = createDiv().parent(viewContent).class('radio-group');
+    chartTypeRadios = createRadio('chartTypeRadios').parent(chartTypeDiv); // Add unique name
     chartTypeRadios.option('line', 'Line Chart');
     chartTypeRadios.option('bar', 'Bar Chart');
     chartTypeRadios.option('mixed', 'Mixed (Portfolio Bar)');
-    chartTypeRadios.selected(chartType); // Ensure this properly selects the default option
+    chartTypeRadios.selected(chartType); // Set from default
     chartTypeRadios.changed(updateChartType);
-    chartTypeRadios.style('margin-bottom', '10px');
-
-    // --- Canvas Size Controls ---
-    let canvasGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group'); // Parent is dynamic container
-    createElement('h4', 'Canvas Size').parent(canvasGroup);
-    // Width
-    let cwDiv = createDiv('Width: ').parent(canvasGroup).style('display', 'flex').style('align-items', 'center');
-    canvasWidthSlider = createSlider(100, 1500, canvasWidth, 10).parent(cwDiv).input(updateCanvasSize).style('flex-grow', '1');
-    canvasWidthInput = createInput(canvasWidth.toString(), 'number').parent(cwDiv).input(updateCanvasSize).style('width', '60px');
-    // Height
-    let chDiv = createDiv('Height: ').parent(canvasGroup).style('display', 'flex').style('align-items', 'center');
-    canvasHeightSlider = createSlider(100, 1000, canvasHeight, 10).parent(chDiv).input(updateCanvasSize).style('flex-grow', '1');
-    canvasHeightInput = createInput(canvasHeight.toString(), 'number').parent(chDiv).input(updateCanvasSize).style('width', '60px');
-
-    // --- Graph Size Controls ---
-    let graphGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group'); // Parent is dynamic container
-    createElement('h4', 'Graph Area Size').parent(graphGroup);
-    // Width
-    let gwDiv = createDiv('Width: ').parent(graphGroup).style('display', 'flex').style('align-items', 'center');
-    graphWidthSlider = createSlider(50, canvasWidth - 50, graphWidth, 5).parent(gwDiv).input(updateGraphSize).style('flex-grow', '1');
-    graphWidthInput = createInput(graphWidth.toString(), 'number').parent(gwDiv).input(updateGraphSize).style('width', '60px');
-    // Height
-    let ghDiv = createDiv('Height: ').parent(graphGroup).style('display', 'flex').style('align-items', 'center');
-    graphHeightSlider = createSlider(50, canvasHeight - 50, graphHeight, 5).parent(ghDiv).input(updateGraphSize).style('flex-grow', '1');
-    graphHeightInput = createInput(graphHeight.toString(), 'number').parent(ghDiv).input(updateGraphSize).style('width', '60px');
-
-    // --- Grid Controls ---
-    let gridGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group'); // Parent is dynamic container
-    createElement('h4', 'Vertical Grid').parent(gridGroup);
-    verticalGridRadios = createRadio().parent(gridGroup);
+    
+    // Vertical Grid Controls
+    createElement('h5', 'Vertical Grid').parent(viewContent).style('margin-top', '15px');
+    let gridDiv = createDiv().parent(viewContent).class('radio-group');
+    verticalGridRadios = createRadio('verticalGridRadios').parent(gridDiv); // Add unique name
     verticalGridRadios.option('weeks', '52 Weeks');
     verticalGridRadios.option('months', '12 Months');
+    verticalGridRadios.option('quarters', '4 Quarters');
     verticalGridRadios.option('none', 'None');
     verticalGridRadios.selected(verticalGridMode);
     verticalGridRadios.changed(updateGridMode);
-    verticalGridRadios.style('margin-top', '5px');
+}
 
-    // --- Bar Chart Settings (Initially hidden) ---
-    barSettingsGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group');
-    createElement('h4', 'Bar Chart Settings').parent(barSettingsGroup);
+function createLayoutControls() {
+    let layoutDetails = createElement('details')
+        .parent(dynamicControlsContainer)
+        .attribute('open', ''); // Open by default
+    
+    createElement('summary', 'Layout Controls').parent(layoutDetails);
+    
+    let layoutContent = createDiv().parent(layoutDetails).class('control-content');
+    
+    // Canvas Size Controls
+    createElement('h5', 'Canvas Size').parent(layoutContent);
+    
+    // Width
+    let cwDiv = createDiv().parent(layoutContent).class('input-group');
+    createElement('label', 'Width: ').parent(cwDiv);
+    canvasWidthSlider = createSlider(100, 2500, canvasWidth, 10).parent(cwDiv);
+    canvasWidthInput = createInput(canvasWidth.toString(), 'number')
+        .parent(cwDiv)
+        .attribute('min', '100')
+        .attribute('max', '2500')
+        .attribute('step', '10');
+    
+    // Connect the events - slider updates immediately
+    canvasWidthSlider.input(() => {
+        canvasWidthInput.value(canvasWidthSlider.value());
+        updateCanvasSize();
+    });
+    
+    // Input only updates when focus is lost (blur)
+    canvasWidthInput.changed(() => {
+        let val = parseInt(canvasWidthInput.value());
+        if (!isNaN(val)) {
+            canvasWidthSlider.value(val);
+            updateCanvasSize();
+        }
+    });
+    
+    // Height
+    let chDiv = createDiv().parent(layoutContent).class('input-group');
+    createElement('label', 'Height: ').parent(chDiv);
+    canvasHeightSlider = createSlider(100, 1500, canvasHeight, 10).parent(chDiv);
+    canvasHeightInput = createInput(canvasHeight.toString(), 'number')
+        .parent(chDiv)
+        .attribute('min', '100')
+        .attribute('max', '1500')
+        .attribute('step', '10');
+    
+    // Connect the events - slider updates immediately
+    canvasHeightSlider.input(() => {
+        canvasHeightInput.value(canvasHeightSlider.value());
+        updateCanvasSize();
+    });
+    
+    // Input only updates when focus is lost (blur)
+    canvasHeightInput.changed(() => {
+        let val = parseInt(canvasHeightInput.value());
+        if (!isNaN(val)) {
+            canvasHeightSlider.value(val);
+            updateCanvasSize();
+        }
+    });
+
+    // Graph Size Controls
+    createElement('h5', 'Graph Area Size').parent(layoutContent).style('margin-top', '15px');
+    
+    // Width
+    let gwDiv = createDiv().parent(layoutContent).class('input-group');
+    createElement('label', 'Width: ').parent(gwDiv);
+    graphWidthSlider = createSlider(10, canvasWidth - 20, graphWidth, 5).parent(gwDiv);
+    graphWidthInput = createInput(graphWidth.toString(), 'number')
+        .parent(gwDiv)
+        .attribute('min', '10')
+        .attribute('max', (canvasWidth - 20).toString())
+        .attribute('step', '5');
+    
+    // Connect the events - slider updates immediately
+    graphWidthSlider.input(() => {
+        graphWidthInput.value(graphWidthSlider.value());
+        updateGraphSize();
+    });
+    
+    // Input only updates when focus is lost (blur)
+    graphWidthInput.changed(() => {
+        const val = parseInt(graphWidthInput.value());
+        if (!isNaN(val)) {
+            graphWidthSlider.value(val);
+            updateGraphSize();
+        }
+    });
+    
+    // Height
+    let ghDiv = createDiv().parent(layoutContent).class('input-group');
+    createElement('label', 'Height: ').parent(ghDiv);
+    graphHeightSlider = createSlider(10, canvasHeight - 20, graphHeight, 5).parent(ghDiv);
+    graphHeightInput = createInput(graphHeight.toString(), 'number')
+        .parent(ghDiv)
+        .attribute('min', '10')
+        .attribute('max', (canvasHeight - 20).toString())
+        .attribute('step', '5');
+    
+    // Connect the events - slider updates immediately
+    graphHeightSlider.input(() => {
+        graphHeightInput.value(graphHeightSlider.value());
+        updateGraphSize();
+    });
+    
+    // Input only updates when focus is lost (blur)
+    graphHeightInput.changed(() => {
+        const val = parseInt(graphHeightInput.value());
+        if (!isNaN(val)) {
+            graphHeightSlider.value(val);
+            updateGraphSize();
+        }
+    });
+}
+
+function createBarControls() {
+    let barDetails = createElement('details')
+        .parent(dynamicControlsContainer)
+        .id('bar-settings-details');
+    
+    // Open by default if chart type is bar or mixed
+    if (chartType === 'bar' || chartType === 'mixed') {
+        barDetails.attribute('open', '');
+    }
+    
+    createElement('summary', 'Bar Chart Settings').parent(barDetails);
+    
+    barSettingsGroup = createDiv().parent(barDetails).class('control-content');
+    
     // Width Ratio
-    let bwDiv = createDiv('Bar Width (%): ').parent(barSettingsGroup).style('display', 'flex').style('align-items', 'center');
+    let bwDiv = createDiv().parent(barSettingsGroup).class('input-group');
+    createElement('label', 'Bar Width (%): ').parent(bwDiv);
     // Map 0.1-1.0 ratio to 10-100 percent for slider
-    barWidthSlider = createSlider(10, 100, barWidthRatio * 100, 1).parent(bwDiv).input(updateBarWidth).style('flex-grow', '1');
-    barWidthInput = createInput((barWidthRatio * 100).toString(), 'number').parent(bwDiv).input(updateBarWidth).style('width', '60px');
+    barWidthSlider = createSlider(10, 100, barWidthRatio * 100, 1).parent(bwDiv);
+    barWidthInput = createInput((barWidthRatio * 100).toString(), 'number')
+        .parent(bwDiv)
+        .attribute('min', '10')
+        .attribute('max', '100')
+        .attribute('step', '1');
+    
+    // Connect events for bar width
+    barWidthSlider.input(() => {
+        barWidthInput.value(barWidthSlider.value());
+        updateBarWidth();
+    });
+    
+    barWidthInput.changed(() => {
+        let val = parseInt(barWidthInput.value());
+        if (!isNaN(val)) {
+            barWidthSlider.value(val);
+            updateBarWidth();
+        }
+    });
+    
     // Group Gap Ratio
-    barGroupGapDiv = createDiv('Group Gap (%): ').parent(barSettingsGroup).style('display', 'flex').style('align-items', 'center');
+    barGroupGapDiv = createDiv().parent(barSettingsGroup).class('input-group');
+    createElement('label', 'Group Gap (%): ').parent(barGroupGapDiv);
     // Map 0.0-0.5 ratio to 0-50 percent
-    barGroupGapSlider = createSlider(0, 50, barGroupGapRatio * 100, 1).parent(barGroupGapDiv).input(updateBarGroupGap).style('flex-grow', '1');
-    barGroupGapInput = createInput((barGroupGapRatio * 100).toString(), 'number').parent(barGroupGapDiv).input(updateBarGroupGap).style('width', '60px');
+    barGroupGapSlider = createSlider(0, 50, barGroupGapRatio * 100, 1).parent(barGroupGapDiv);
+    barGroupGapInput = createInput((barGroupGapRatio * 100).toString(), 'number')
+        .parent(barGroupGapDiv)
+        .attribute('min', '0')
+        .attribute('max', '50')
+        .attribute('step', '1');
+    
+    // Connect events for bar group gap
+    barGroupGapSlider.input(() => {
+        barGroupGapInput.value(barGroupGapSlider.value());
+        updateBarGroupGap();
+    });
+    
+    barGroupGapInput.changed(() => {
+        let val = parseInt(barGroupGapInput.value());
+        if (!isNaN(val)) {
+            barGroupGapSlider.value(val);
+            updateBarGroupGap();
+        }
+    });
+    
     // Display Style
-    createElement('h5', 'Bar Display Style').parent(barSettingsGroup).style('margin-top', '15px').style('margin-bottom', '5px');
-    barStyleRadios = createRadio().parent(barSettingsGroup);
+    createElement('h5', 'Bar Display Style').parent(barSettingsGroup).style('margin-top', '15px');
+    let barStyleDiv = createDiv().parent(barSettingsGroup).class('radio-group');
+    barStyleRadios = createRadio('barStyleRadios').parent(barStyleDiv); // Add unique name
     barStyleRadios.option('overlay', 'Overlay');
     barStyleRadios.option('grouped', 'Grouped');
     barStyleRadios.selected(barDisplayStyle);
     barStyleRadios.changed(updateBarStyle);
+}
 
-    // --- Line Controls ---
-     createElement('h4', 'Line Settings').parent(dynamicControlsContainer); // Parent is dynamic container
+function createLineControls() {
+    createElement('h4', 'Line Settings').parent(dynamicControlsContainer);
+    
     lineSettings.forEach((line, index) => {
-        let lineGroup = createDiv().parent(dynamicControlsContainer).addClass('control-group line-controls'); // Parent is dynamic container
-        let titleDiv = createDiv().parent(lineGroup).style('display', 'flex').style('align-items', 'center').style('margin-bottom', '10px');
-
-        // Toggle Visibility Checkbox - ensure it reflects current visibility state
-        let visLabel = createCheckbox('', line.visible).parent(titleDiv).style('margin-right', '10px');
-        visLabel.checked(line.visible); // Explicitly set checkbox state to match line.visible
-        visLabel.changed(() => {
-            line.visible = visLabel.checked();
-            redraw(); // Ensure canvas is redrawn when visibility changes
+        let lineDetails = createElement('details')
+            .parent(dynamicControlsContainer)
+            .class('line-controls');
+        
+        // Create summary with checkbox and name
+        let summaryContent = createDiv(`${line.name} (${line.ticker})`);
+        let visCheckbox = createCheckbox('', line.visible);
+        visCheckbox.style('display', 'inline-block');
+        visCheckbox.style('margin-right', '10px');
+        visCheckbox.changed(() => {
+            line.visible = visCheckbox.checked();
+            redraw();
         });
-
-        // Color Swatch and Title
-        let colorSwatch = createSpan('&nbsp;&nbsp;&nbsp;').parent(titleDiv)
-          .style('background-color', line.color)
-          .style('padding', '0 8px')
-          .style('border', '1px solid #ccc')
-          .style('margin-right', '10px');
-        createElement('strong', `${line.name} (${line.ticker})`).parent(titleDiv);
-
+        
+        let colorSwatch = createSpan('&nbsp;&nbsp;&nbsp;')
+            .style('background-color', line.color)
+            .style('padding', '0 8px')
+            .style('border', '1px solid #ccc')
+            .style('margin-right', '10px')
+            .style('display', 'inline-block');
+        
+        let summary = createElement('summary').parent(lineDetails);
+        visCheckbox.parent(summary);
+        colorSwatch.parent(summary);
+        summaryContent.parent(summary);
+        
+        // Create content
+        let lineContent = createDiv().parent(lineDetails).class('control-content');
 
         // Color Picker and Text Input
-        let cpContainer = createDiv('Color: ').parent(lineGroup).style('display', 'flex').style('align-items', 'center');
-        let colorPicker = createColorPicker(line.color).parent(cpContainer);
-        let colorInput = createInput(line.color, 'text').parent(cpContainer)
-           .style('width', '150px').style('margin-left', '10px');
-
-        // Event listener for the text input
-        colorInput.input(() => {
-            let inputText = colorInput.value().trim(); // Trim whitespace
-            try {
-                // Attempt to parse the input color
-                let parsedColor = color(inputText);
-
-                // Rudimentary check if p5 parsing failed (might return black or transparent)
-                // This isn't perfect but tries to catch obvious errors.
-                if (alpha(parsedColor) === 0 && !inputText.match(/(transparent|rgba?\(.*, *0\)|hsla?\(.*, *0%?\))/i)) {
-                    throw new Error("Parsed color has zero alpha, likely an error.");
-                }
-
-                let storeValue = '';
-                // Check if the *original* input looks like hsl format (case-insensitive)
-                if (inputText.toLowerCase().startsWith('hsl(')) {
-                    // If input looked like HSL and parsed without throwing error, store the original HSL string
-                    storeValue = inputText;
-                } else {
-                    // Otherwise, store the standard hex format (#rrggbb)
-                    storeValue = parsedColor.toString('#rrggbb');
-                }
-
-                // Update internal state with either original HSL or converted hex
-                line.color = storeValue;
-
-                // Update the color picker to match the parsed color (picker needs hex)
-                colorPicker.value(parsedColor.toString('#rrggbb'));
-                // Update the swatch
-                colorSwatch.style('background-color', parsedColor.toString('#rrggbb'));
-                // Clear any potential error styling
-                // colorInput.style('border-color', '');
-
-            } catch (e) {
-                console.warn("Invalid color input:", inputText, e);
-                // Optional: Visual feedback for invalid input (e.g., red border)
-                // colorInput.style('border-color', 'red');
-                // Don't update anything if the input was invalid
-            }
-        });
+        let cpDiv = createDiv().parent(lineContent).class('input-group');
+        createElement('label', 'Color:').parent(cpDiv);
+        let colorPicker = createColorPicker(line.color).parent(cpDiv);
+        let colorInput = createInput(line.color, 'text').parent(cpDiv)
+           .style('width', '80px').style('margin-left', '10px');
 
         // Event listener for the color picker
         colorPicker.input(() => {
-            line.color = colorPicker.value(); // Picker returns hex #rrggbb
-            colorInput.value(line.color); // Update text input
-            colorSwatch.style('background-color', line.color); // Update swatch
-            // redraw(); // No longer needed
+            line.color = colorPicker.value();
+            colorInput.value(line.color);
+            colorSwatch.style('background-color', line.color);
         });
 
-
+        // Event listener for the text input
+        colorInput.input(() => {
+            let inputText = colorInput.value().trim();
+            try {
+                let parsedColor = color(inputText);
+                if (alpha(parsedColor) === 0 && !inputText.match(/(transparent|rgba?\(.*, *0\)|hsla?\(.*, *0%?\))/i)) {
+                    throw new Error("Parsed color has zero alpha, likely an error.");
+                }
+                
+                let storeValue = '';
+                if (inputText.toLowerCase().startsWith('hsl(')) {
+                    storeValue = inputText;
+                } else {
+                    storeValue = parsedColor.toString('#rrggbb');
+                }
+                
+                line.color = storeValue;
+                colorPicker.value(parsedColor.toString('#rrggbb'));
+                colorSwatch.style('background-color', parsedColor.toString('#rrggbb'));
+            } catch (e) {
+                console.warn("Invalid color input:", inputText, e);
+            }
+        });
+        
         // Stroke Weight
-        let swDiv = createDiv('Stroke: ').parent(lineGroup);
-        let strokeInput = createInput(line.stroke.toString(), 'number').parent(swDiv)
-            .attribute('step', '0.1').attribute('min', '0.1')
-            .style('width', '50px').style('margin-left', '5px');
-        strokeInput.input(() => {
+        let swDiv = createDiv().parent(lineContent).class('input-group');
+        createElement('label', 'Stroke Width:').parent(swDiv);
+        let strokeSlider = createSlider(0.1, 5, line.stroke, 0.1).parent(swDiv);
+        let strokeInput = createInput(line.stroke.toString(), 'number')
+            .parent(swDiv)
+            .attribute('step', '0.1')
+            .attribute('min', '0.1')
+            .attribute('max', '5');
+        
+        // Connect events for stroke slider
+        strokeSlider.input(() => {
+            let val = strokeSlider.value();
+            strokeInput.value(val);
+            line.stroke = val;
+            redraw();
+        });
+        
+        strokeInput.changed(() => {
             let val = parseFloat(strokeInput.value());
             if (!isNaN(val) && val > 0) {
+                strokeSlider.value(val);
                 line.stroke = val;
                 redraw();
             }
         });
 
-        // Opacity
-        let opDiv = createDiv('Opacity: ').parent(lineGroup);
-        let opacityInput = createInput(line.opacity.toString(), 'number').parent(opDiv)
-            .attribute('step', '1').attribute('min', '0').attribute('max', '255')
-            .style('width', '50px').style('margin-left', '5px');
-         opacityInput.input(() => {
-             let val = parseInt(opacityInput.value());
-            if (!isNaN(val) && val >= 0 && val <= 255) {
-                line.opacity = val;
+        // Line Opacity (0-100)
+        let opDiv = createDiv().parent(lineContent).class('input-group');
+        createElement('label', 'Opacity (%):').parent(opDiv);
+        
+        // Convert 0-255 to 0-100 for display
+        let displayOpacity = Math.round(line.opacity / 2.55);
+        
+        let opacitySlider = createSlider(0, 100, displayOpacity, 1).parent(opDiv);
+        let opacityInput = createInput(displayOpacity.toString(), 'number')
+            .parent(opDiv)
+            .attribute('step', '1')
+            .attribute('min', '0')
+            .attribute('max', '100');
+        
+        // Connect events for opacity
+        opacitySlider.input(() => {
+            let val = parseInt(opacitySlider.value());
+            opacityInput.value(val);
+            // Convert 0-100 back to 0-255 for internal use
+            line.opacity = Math.round(val * 2.55);
+            redraw();
+        });
+        
+        opacityInput.changed(() => {
+            let val = parseInt(opacityInput.value());
+            if (!isNaN(val) && val >= 0 && val <= 100) {
+                opacitySlider.value(val);
+                // Convert 0-100 back to 0-255 for internal use
+                line.opacity = Math.round(val * 2.55);
                 redraw();
             }
         });
 
-        // Gradient Toggle Checkbox
-        let gradToggleDiv = createDiv().parent(lineGroup);
-        let gradientCheckbox = createCheckbox(' Show Area Fill', line.showGradient).parent(gradToggleDiv); // << Renamed label slightly
+        // Area Fill Controls
+        let fillDiv = createDiv().parent(lineContent);
+        let gradientCheckbox = createCheckbox(' Show Area Fill', line.showGradient).parent(fillDiv);
         gradientCheckbox.changed(() => {
             line.showGradient = gradientCheckbox.checked();
-            // redraw(); // No longer needed
+            redraw();
         });
-        // Store the checkbox element for global toggle
-        line.gradientCheckboxElement = gradientCheckbox; // << ADDED: Store reference
+        line.gradientCheckboxElement = gradientCheckbox;
+        line.gradientToggleDiv = fillDiv;
 
-        // Add Fill Area Opacity control (Previously Gradient)
-        let fillOpDiv = createDiv('Area Fill Opacity (%): ').parent(lineGroup);
-        line.fillOpacityInputElement = createInput(line.fillOpacity.toString(), 'number').parent(fillOpDiv) // << Store reference
-            .attribute('step', '1').attribute('min', '0').attribute('max', '100') // << Changed max to 100
-            .style('width', '50px').style('margin-left', '5px');
-        line.fillOpacityInputElement.input(() => { // << Use stored reference
+        // Area Fill Opacity (already on 0-100 scale)
+        let fillOpDiv = createDiv().parent(lineContent).class('input-group');
+        createElement('label', 'Fill Opacity (%):').parent(fillOpDiv);
+        
+        let fillOpacitySlider = createSlider(0, 100, line.fillOpacity, 1).parent(fillOpDiv);
+        line.fillOpacityInputElement = createInput(line.fillOpacity.toString(), 'number')
+            .parent(fillOpDiv)
+            .attribute('step', '1')
+            .attribute('min', '0')
+            .attribute('max', '100');
+        
+        // Connect events for fill opacity
+        fillOpacitySlider.input(() => {
+            let val = parseInt(fillOpacitySlider.value());
+            line.fillOpacityInputElement.value(val);
+            line.fillOpacity = val;
+            redraw();
+        });
+        
+        line.fillOpacityInputElement.changed(() => {
             let val = parseInt(line.fillOpacityInputElement.value());
-            if (!isNaN(val) && val >= 0 && val <= 100) { // Check range 0-100
+            if (!isNaN(val) && val >= 0 && val <= 100) {
+                fillOpacitySlider.value(val);
                 line.fillOpacity = val;
-                 // redraw();
+                redraw();
             }
         });
-
-        // Store references to disable/enable based on chart type
-        line.gradientToggleDiv = gradToggleDiv;
+        
         line.fillOpacityDiv = fillOpDiv;
     });
     
     // Ensure all lines are properly visible by default
-    lineSettings.forEach((line, index) => {
+    lineSettings.forEach((line) => {
         // Mark all lines as visible initially
         line.visible = true;
         
-        // ... rest of the line settings code ...
-    });
-    
-    // This explicitly selects all line visibility checkboxes after control creation
-    for (let i = 0; i < lineSettings.length; i++) {
-        let line = lineSettings[i];
+        // Explicitly set checkbox state
         if (line.gradientCheckboxElement) {
             line.gradientCheckboxElement.checked(line.showGradient);
         }
-    }
-
-    redraw(); // Initial draw after creating controls
-    updateChartType(); // Call once initially to set control visibility
+    });
 }
 
 function updateCanvasSize() {
-    let wVal, hVal;
-    // Get value from either slider or input that triggered the event
-    // Check the type of element that triggered the event
-    if (this.elt.type === 'range') { // Slider changed
-        wVal = canvasWidthSlider.value();
-        hVal = canvasHeightSlider.value();
-        canvasWidthInput.value(wVal); // Update input field
-        canvasHeightInput.value(hVal);
-    } else { // Input field changed
-        wVal = parseInt(canvasWidthInput.value());
-        hVal = parseInt(canvasHeightInput.value());
-         if (!isNaN(wVal)) canvasWidthSlider.value(wVal); // Update slider
-         if (!isNaN(hVal)) canvasHeightSlider.value(hVal);
-    }
-
-
-    canvasWidth = parseInt(canvasWidthSlider.value()); // Read final value from slider
-    canvasHeight = parseInt(canvasHeightSlider.value());
-
-
-    if (isNaN(canvasWidth) || canvasWidth < 100) canvasWidth = 100;
-    if (isNaN(canvasHeight) || canvasHeight < 100) canvasHeight = 100;
-
+    // Get values from both slider and input
+    let sliderWidth = parseInt(canvasWidthSlider.value());
+    let sliderHeight = parseInt(canvasHeightSlider.value());
+    let inputWidth = parseInt(canvasWidthInput.value());
+    let inputHeight = parseInt(canvasHeightInput.value());
+    
+    // Use input values if they're valid, otherwise use slider values
+    canvasWidth = !isNaN(inputWidth) ? inputWidth : sliderWidth;
+    canvasHeight = !isNaN(inputHeight) ? inputHeight : sliderHeight;
+    
+    // Apply constraints
+    if (canvasWidth < 100) canvasWidth = 100;
+    if (canvasHeight < 100) canvasHeight = 100;
+    
     // --- Adjust Graph Size and Controls ---
-    // Ensure graph size isn't larger than canvas (minus padding) & update controls
+    // Ensure graph size isn't larger than canvas (minus padding)
     let maxGraphW = canvasWidth - 50;
     let maxGraphH = canvasHeight - 50;
-
-    graphWidth = min(graphWidth, maxGraphW); // Keep current graph width if possible, else shrink
+    
+    graphWidth = min(graphWidth, maxGraphW);
     graphHeight = min(graphHeight, maxGraphH);
-
-    graphWidthSlider.attribute('max', maxGraphW); // Update slider limits
+    
+    // Update all UI elements
+    canvasWidthSlider.value(canvasWidth);
+    canvasHeightSlider.value(canvasHeight);
+    canvasWidthInput.value(canvasWidth);
+    canvasHeightInput.value(canvasHeight);
+    
+    graphWidthSlider.attribute('max', maxGraphW);
     graphHeightSlider.attribute('max', maxGraphH);
-
-    graphWidthSlider.value(graphWidth); // Update slider positions
-    graphHeightSlider.value(graphHeight);
-    graphWidthInput.value(graphWidth);   // Update input fields
-    graphHeightInput.value(graphHeight);
-
-    resizeCanvas(canvasWidth, canvasHeight);
-}
-
-
-function updateGraphSize() {
-     let wVal, hVal;
-    // Get value from either slider or input that triggered the event
-     if (this.elt.type === 'range') { // Slider changed
-         wVal = graphWidthSlider.value();
-         hVal = graphHeightSlider.value();
-         graphWidthInput.value(wVal);
-         graphHeightInput.value(hVal);
-     } else { // Input field changed
-         wVal = parseInt(graphWidthInput.value());
-         hVal = parseInt(graphHeightInput.value());
-         if (!isNaN(wVal)) graphWidthSlider.value(wVal);
-         if (!isNaN(hVal)) graphHeightSlider.value(hVal);
-     }
-
-
-    graphWidth = parseInt(graphWidthSlider.value());
-    graphHeight = parseInt(graphHeightSlider.value());
-
-    // Ensure graph size is within bounds (min and max based on current canvas)
-    let maxGraphW = canvasWidth - 50;
-    let maxGraphH = canvasHeight - 50;
-    graphWidth = constrain(graphWidth, 50, maxGraphW);
-    graphHeight = constrain(graphHeight, 50, maxGraphH);
-
-    // Update both controls again after constraining
+    
     graphWidthSlider.value(graphWidth);
-    graphWidthInput.value(graphWidth);
     graphHeightSlider.value(graphHeight);
+    graphWidthInput.value(graphWidth);
     graphHeightInput.value(graphHeight);
-
-
+    
+    // Resize canvas
+    resizeCanvas(canvasWidth, canvasHeight);
+    
     redraw();
 }
 
+function updateGraphSize() {
+    console.log("updateGraphSize called");
+    
+    // Get values from both slider and input
+    let sliderWidth = parseInt(graphWidthSlider.value());
+    let sliderHeight = parseInt(graphHeightSlider.value());
+    let inputWidth = parseInt(graphWidthInput.value());
+    let inputHeight = parseInt(graphHeightInput.value());
+    
+    console.log("Values:", {sliderWidth, sliderHeight, inputWidth, inputHeight});
+    
+    // Use input values if they're valid, otherwise use slider values
+    graphWidth = !isNaN(inputWidth) ? inputWidth : sliderWidth;
+    graphHeight = !isNaN(inputHeight) ? inputHeight : sliderHeight;
+    
+    // Apply constraints
+    let maxGraphW = canvasWidth - 20;
+    let maxGraphH = canvasHeight - 20;
+    graphWidth = constrain(graphWidth, 10, maxGraphW);
+    graphHeight = constrain(graphHeight, 10, maxGraphH);
+    
+    console.log("After constraints:", {graphWidth, graphHeight});
+    
+    // Update all UI elements
+    graphWidthSlider.value(graphWidth);
+    graphHeightSlider.value(graphHeight);
+    graphWidthInput.value(graphWidth);
+    graphHeightInput.value(graphHeight);
+    
+    redraw();
+}
 
 function draw() {
     background(30); // Dark background (match CSS #1e1e1e approx)
@@ -876,6 +1113,8 @@ function draw() {
              numVerticalLines = 52;
          } else if (verticalGridMode === 'months') {
              numVerticalLines = 11; // 11 lines for 12 month sections
+         } else if (verticalGridMode === 'quarters') {
+             numVerticalLines = 3; // 3 lines to divide into 4 quarters (three separators)
          }
 
          if (numVerticalLines > 0) {
@@ -1165,9 +1404,25 @@ function updateChartType() {
     let isBarChart = (chartType === 'bar');
     let isMixedChart = (chartType === 'mixed');
 
-    // --- Enable/disable Area Fill controls ---
+    // Show/hide Bar Settings details section
+    let barDetails = select('#bar-settings-details');
+    if (isBarChart || isMixedChart) {
+        barDetails.attribute('open', ''); // Force open the details if bar chart is active
+        barDetails.style('display', 'block');
+        
+        // Enable/disable Group Gap based on style
+        let enableGroupGap = (barDisplayStyle === 'grouped');
+        barGroupGapSlider.elt.disabled = !enableGroupGap;
+        barGroupGapInput.elt.disabled = !enableGroupGap;
+        barGroupGapDiv.style('opacity', enableGroupGap ? '1' : '0.5');
+    } else {
+        barDetails.removeAttribute('open'); // Close the details if not bar chart
+        barDetails.style('display', 'none');
+    }
+
+    // Enable/disable Area Fill controls
     lineSettings.forEach(line => {
-        // Determine if area fill should be enabled for THIS specific line
+        // Determine if area fill should be enabled for this specific line
         let enableAreaFillForThisLine = false;
         if (isLineChart) {
             enableAreaFillForThisLine = true; // All lines in Line mode
@@ -1180,23 +1435,70 @@ function updateChartType() {
         if (line.gradientToggleDiv) line.gradientToggleDiv.style('opacity', enableAreaFillForThisLine ? '1' : '0.5');
         if (line.fillOpacityDiv) line.fillOpacityDiv.style('opacity', enableAreaFillForThisLine ? '1' : '0.5');
     });
+    
     // Also update the global toggle button
     toggleAreasButton.elt.disabled = !isLineChart;
     toggleAreasButton.style('opacity', isLineChart ? '1' : '0.5');
 
-    // --- Show/hide Bar Chart Settings ---
-    if (isBarChart || isMixedChart) {
-        barSettingsGroup.style('display', 'block');
-        // Enable/disable Group Gap based on style
-        let enableGroupGap = (barDisplayStyle === 'grouped');
-        barGroupGapSlider.elt.disabled = !enableGroupGap;
-        barGroupGapInput.elt.disabled = !enableGroupGap;
-        barGroupGapDiv.style('opacity', enableGroupGap ? '1' : '0.5');
-    } else {
-        barSettingsGroup.style('display', 'none');
-    }
+    redraw();
+}
 
-    // Trigger redraw if needed (usually automatic now)
+// Updates bar display style and keeps settings visible
+function updateBarStyle() {
+    console.log("Updating bar style:", barStyleRadios.value());
+    barDisplayStyle = barStyleRadios.value();
+    
+    // Keep bar settings panel open
+    let barDetails = select('#bar-settings-details');
+    barDetails.attribute('open', '');
+    
+    // Enable/disable Group Gap based on style
+    let enableGroupGap = (barDisplayStyle === 'grouped');
+    barGroupGapSlider.elt.disabled = !enableGroupGap;
+    barGroupGapInput.elt.disabled = !enableGroupGap;
+    barGroupGapDiv.style('opacity', enableGroupGap ? '1' : '0.5');
+    
+    redraw();
+}
+
+// Updates bar width ratio and keeps settings visible
+function updateBarWidth() {
+    let valPercent = parseInt(barWidthInput.value());
+    if (isNaN(valPercent)) {
+        valPercent = barWidthRatio * 100;
+    }
+    valPercent = constrain(valPercent, 10, 100); // Ensure range 10-100
+    barWidthRatio = valPercent / 100.0; // Convert percentage back to ratio 0.1-1.0
+    
+    // Update UI elements
+    barWidthSlider.value(valPercent);
+    barWidthInput.value(valPercent);
+    
+    // Keep bar settings panel open
+    let barDetails = select('#bar-settings-details');
+    barDetails.attribute('open', '');
+    
+    redraw(); // Force redraw
+}
+
+// Updates bar group gap and keeps settings visible
+function updateBarGroupGap() {
+    let valPercent = parseInt(barGroupGapInput.value());
+    if (isNaN(valPercent)) {
+        valPercent = barGroupGapRatio * 100;
+    }
+    valPercent = constrain(valPercent, 0, 50); // Ensure range 0-50
+    barGroupGapRatio = valPercent / 100.0; // Convert percentage back to ratio 0.0-0.5
+    
+    // Update UI elements
+    barGroupGapSlider.value(valPercent);
+    barGroupGapInput.value(valPercent);
+    
+    // Keep bar settings panel open
+    let barDetails = select('#bar-settings-details');
+    barDetails.attribute('open', '');
+    
+    redraw(); // Force redraw
 }
 
 // --- Helper function for drawing Line Chart --- 
@@ -1268,7 +1570,7 @@ function drawLinesAndAreaFills(graphX, graphY, graphWidth, graphHeight, minY, ma
     });
 } // End of drawLinesAndAreaFills
 
-// --- Helper function for drawing Bar Chart --- ADDED
+// --- Helper function for drawing Bar Chart ---
 function drawBars(graphX, graphY, graphWidth, graphHeight, minY, maxY, lineFilterFn) {
     // Filter lines first based on the provided function and visibility/data validity
     let linesToDraw = lineSettings.filter(line => lineFilterFn(line) && line.visible && line.normalizedData && line.normalizedData.length > 0);
@@ -1339,44 +1641,6 @@ function drawBars(graphX, graphY, graphWidth, graphHeight, minY, maxY, lineFilte
         }); // End forEach linesToDraw
     } // End for i (data points)
 } // End of drawBars
-
-// << ADDED: Functions for bar settings updates >>
-function updateBarWidth() {
-    let valPercent;
-    if (this.elt.type === 'range') { // Slider changed
-        valPercent = barWidthSlider.value();
-        barWidthInput.value(valPercent);
-    } else { // Input field changed
-        valPercent = parseInt(barWidthInput.value());
-        if (!isNaN(valPercent)) {
-            barWidthSlider.value(constrain(valPercent, 10, 100)); // Update slider too
-        }
-    }
-    valPercent = constrain(valPercent, 10, 100); // Ensure range 10-100
-    barWidthRatio = valPercent / 100.0; // Convert percentage back to ratio 0.1-1.0
-}
-
-function updateBarStyle() {
-    barDisplayStyle = barStyleRadios.value();
-    // Update enabled state of group gap controls
-    updateChartType();
-}
-
-// << ADDED: Function for group gap updates >>
-function updateBarGroupGap() {
-    let valPercent;
-    if (this.elt.type === 'range') { // Slider changed
-        valPercent = barGroupGapSlider.value();
-        barGroupGapInput.value(valPercent);
-    } else { // Input field changed
-        valPercent = parseInt(barGroupGapInput.value());
-        if (!isNaN(valPercent)) {
-            barGroupGapSlider.value(constrain(valPercent, 0, 50)); // Update slider too
-        }
-    }
-    valPercent = constrain(valPercent, 0, 50); // Ensure range 0-50
-    barGroupGapRatio = valPercent / 100.0; // Convert percentage back to ratio 0.0-0.5
-}
 
 // << ADDED: Function to update time period mode >>
 function updateTimePeriod() {
